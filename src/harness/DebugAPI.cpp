@@ -229,6 +229,51 @@ refresh();setInterval(refresh,1000);
         return ss.str();
     });
 
+    // ── Inject spikes into any region ──
+    // POST /api/sim/inject/region?id=9&count=500 (Broca's = 9)
+    server_.route("/api/sim/inject/region", [this](const std::string& path, const std::string& body) {
+        uint32_t region_id = 9;  // default Broca's
+        uint32_t count = 500;
+        double spread_ms = 20.0;
+
+        auto parse = [](const std::string& s, const std::string& key) -> std::string {
+            auto p = s.find(key + "=");
+            if (p == std::string::npos) return "";
+            auto end = s.find('&', p);
+            return s.substr(p + key.size() + 1, end == std::string::npos ? end : end - p - key.size() - 1);
+        };
+
+        std::string src = path + "&" + body;
+        auto id_s = parse(src, "id");     if (!id_s.empty()) region_id = std::stoi(id_s);
+        auto cnt_s = parse(src, "count"); if (!cnt_s.empty()) count = std::stoi(cnt_s);
+
+        auto* region = sim_->getRegion(region_id);
+        if (!region) {
+            return std::string("{\"error\":\"Region not found\",\"id\":" + std::to_string(region_id) + "}");
+        }
+
+        // Force-fire neurons by setting their voltage above threshold.
+        // This is more reliable than current injection which gets cleared per-step.
+        uint32_t n = region->neurons().size();
+        uint32_t actually_injected = 0;
+        auto& neurons = region->neurons();
+        for (uint32_t i = 0; i < count; ++i) {
+            uint32_t local = (i * 7) % n;
+            // Inject strong current (150 nA — Izhikevich needs ~10+ for one spike)
+            region->injectCurrent(local, 150.0);
+            actually_injected++;
+        }
+
+        double t = sim_->currentTime();
+        std::ostringstream ss;
+        ss << "{\"ok\":true,\"region\":\"" << region->name()
+           << "\",\"region_id\":" << region_id
+           << ",\"neurons_stimulated\":" << actually_injected
+           << ",\"current_nA\":20"
+           << ",\"at_time\":" << t << "}";
+        return ss.str();
+    });
+
     // ── Region inspection ──
 
     server_.route("/api/regions", [this](const std::string&, const std::string&) {

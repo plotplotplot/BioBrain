@@ -3,6 +3,7 @@
 #include "recording/SpikeRecorder.h"
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 namespace biobrain {
 
@@ -138,6 +139,20 @@ void Simulation::stepSimulation() {
         std::vector<double> I_syn(n, 0.0);
         bool has_activity = false;
 
+        // Add externally injected currents (persist across substeps,
+        // decaying 10% per step to simulate a brief pulse)
+        auto& injected = region->injectedCurrents();
+        if (!injected.empty()) {
+            for (size_t i = 0; i < std::min(n, injected.size()); ++i) {
+                if (injected[i] != 0.0) {
+                    I_syn[i] += injected[i];
+                    has_activity = true;
+                    injected[i] *= 0.9;  // decay (reaches ~35% after 10 substeps = 1ms)
+                    if (std::abs(injected[i]) < 0.01) injected[i] = 0.0;
+                }
+            }
+        }
+
         // Check active synapses (conductance > 0) — use the active set
         auto& synapses = region->internalSynapses();
 
@@ -164,10 +179,16 @@ void Simulation::stepSimulation() {
             }
         }
 
-        // Skip neuron updates entirely if no activity in this region
-        if (!has_activity && !region_has_events) {
-            region->setCurrentTime(t + DT);
-            continue;
+        // Minimal ion channel noise (~1 nA) — only for regions with injected
+        // current or active synapses, to help neurons near threshold cross it.
+        if (has_activity) {
+            static thread_local std::mt19937 noise_rng(std::random_device{}());
+            std::normal_distribution<double> noise(0.5, 1.0);
+            for (size_t i = 0; i < n; ++i) {
+                if (I_syn[i] > 0.0) {
+                    I_syn[i] += noise(noise_rng);
+                }
+            }
         }
 
         // Update neurons via the compute backend

@@ -106,6 +106,15 @@ std::unique_ptr<Neuron> BrainRegion::createNeuron(NeuronModelType model, uint32_
     return neuron;
 }
 
+void BrainRegion::injectCurrent(uint32_t local_index, double current_nA) {
+    if (injected_currents_.empty()) {
+        injected_currents_.resize(neurons_.size(), 0.0);
+    }
+    if (local_index < injected_currents_.size()) {
+        injected_currents_[local_index] += current_nA;
+    }
+}
+
 void BrainRegion::buildSynapseIndex() {
     pre_synapse_index_.clear();
     post_synapse_index_.clear();

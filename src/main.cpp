@@ -224,7 +224,7 @@ int main(int argc, char* argv[]) {
             webcamWidget->updateFrame(frame.pixels.data(), frame.width, frame.height);
         }
 
-        // Feed retinal encoder → simulation (only when running)
+        // Feed retinal encoder → LGN via direct current injection
         auto sim = simWeakPtr.lock();
         if (!sim || !sim->isRunning()) return;
 
@@ -234,21 +234,18 @@ int main(int argc, char* argv[]) {
         SpikeOutput retinalSpikes = encoderPtr->encode(
             frame.pixels.data(), frame.width, frame.height, t_start, t_end);
 
-        // Convert retinal spike output to SpikeEvents targeting LGN
-        std::vector<SpikeEvent> events;
-        events.reserve(retinalSpikes.neuron_ids.size());
-        for (size_t i = 0; i < retinalSpikes.neuron_ids.size(); ++i) {
-            SpikeEvent ev;
-            ev.source_id = retinalSpikes.neuron_ids[i];
-            ev.target_id = retinalSpikes.neuron_ids[i];  // 1:1 topographic
-            ev.time = retinalSpikes.spike_times[i];
-            ev.delay = 2.0;  // optic nerve delay (ms)
-            ev.source_region = Retina::REGION_ID;
-            ev.target_region = LGN::REGION_ID;
-            events.push_back(ev);
-        }
+        // Inject retinal spikes as current directly into LGN relay neurons.
+        // This models the optic nerve: each RGC spike delivers ~15nA to its
+        // topographic LGN target (enough to drive LGN relay cells above threshold).
+        auto* lgn = sim->getRegion(LGN::REGION_ID);
+        if (!lgn) return;
 
-        sim->injectSpikes(events);
+        uint32_t lgn_relay_count = 4000;  // LGN has 4000 relay + 1000 interneurons
+        for (size_t i = 0; i < retinalSpikes.neuron_ids.size(); ++i) {
+            // Topographic mapping: RGC neuron i → LGN relay neuron (i % relay_count)
+            uint32_t lgn_local = retinalSpikes.neuron_ids[i] % lgn_relay_count;
+            lgn->injectCurrent(lgn_local, 15.0);  // 15 nA per retinal spike
+        }
     });
 
     // Start webcam after event loop is running (so permission dialog can display).

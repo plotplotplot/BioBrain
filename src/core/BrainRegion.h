@@ -65,6 +65,14 @@ public:
     /// Record a spike time for firing rate tracking.
     void recordSpikeTime(double t);
 
+    /// Inject current directly into a neuron (bypasses synapses).
+    /// Used for external stimulation. Current persists for one timestep.
+    void injectCurrent(uint32_t local_index, double current_nA);
+
+    /// Get and clear pending injected currents.
+    std::vector<double>& injectedCurrents() { return injected_currents_; }
+    void clearInjectedCurrents() { std::fill(injected_currents_.begin(), injected_currents_.end(), 0.0); }
+
 private:
     uint32_t id_;
     std::string name_;
@@ -99,6 +107,9 @@ private:
     // post_id → vector of indices into internal_synapses_
     std::unordered_map<uint32_t, std::vector<uint32_t>> post_synapse_index_;
     bool index_built_ = false;
+
+    // External current injection buffer (one entry per neuron, cleared each step)
+    std::vector<double> injected_currents_;
 };
 
 } // namespace biobrain
