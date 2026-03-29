@@ -31,6 +31,9 @@
 #include <atomic>
 #include <thread>
 #include <cstring>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
 
 using namespace biobrain;
 
@@ -70,11 +73,54 @@ int main(int argc, char* argv[]) {
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
 
-    // Parse port from args
+    // Parse args
     int port = 9090;
+    bool kill_existing = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
             port = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "--kill") == 0 || std::strcmp(argv[i], "-k") == 0) {
+            kill_existing = true;
+        } else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
+            fprintf(stderr, "Usage: BioBrainHeadless [options]\n");
+            fprintf(stderr, "  --port N    Listen on port N (default: 9090)\n");
+            fprintf(stderr, "  --kill, -k  Kill existing BioBrain processes on startup\n");
+            fprintf(stderr, "  --help, -h  Show this help\n");
+            return 0;
+        }
+    }
+
+    // Kill existing BioBrain processes if requested
+    if (kill_existing) {
+        fprintf(stderr, "Killing existing BioBrain processes...\n");
+        #ifdef __APPLE__
+        system("pkill -f BioBrain 2>/dev/null; sleep 1");
+        #else
+        system("pkill -f BioBrain 2>/dev/null; sleep 1");
+        #endif
+    }
+
+    // Check if port is already in use, auto-increment if so
+    {
+        int test_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (test_fd >= 0) {
+            int opt = 1;
+            setsockopt(test_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+            sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = INADDR_ANY;
+            addr.sin_port = htons(port);
+            while (bind(test_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
+                fprintf(stderr, "Port %d in use, trying %d...\n", port, port + 1);
+                port++;
+                addr.sin_port = htons(port);
+                if (port > 9100) {
+                    fprintf(stderr, "ERROR: No available port in range 9090-9100\n");
+                    close(test_fd);
+                    return 1;
+                }
+            }
+            close(test_fd);
         }
     }
 
