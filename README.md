@@ -1,18 +1,18 @@
 # BioBrain
 
-A biologically-realistic spiking neural simulation engine that models the visual cortex pipeline and basal ganglia reinforcement learning loop. Written in C++ with Metal GPU compute acceleration and a Qt6 frontend for real-time visualization and configuration.
+A biologically-realistic spiking neural simulation engine that models the visual cortex pipeline, basal ganglia reinforcement learning loop, and language production circuit. Written in C++ with GPU compute acceleration (Metal on macOS, CUDA on Linux) and a Qt6 frontend for real-time visualization.
+
+**Cross-platform**: macOS (Apple Silicon / Metal) and Linux (NVIDIA CUDA / RTX).
 
 ## Architecture
 
 ```
-Webcam → [Retinal Encoder] → LGN → V1 → V2/V4 → IT
-                                                    ↓
-                              Motor ← Striatum ← VTA
-                                        ↑           ↑
-                                      (D1/D2)    (reward)
+Webcam → [Retinal Encoder] → LGN → V1 → V2/V4 → IT ─┬→ Wernicke's → Broca's → Speaker
+                                                       └→ Striatum → Motor
+                                                VTA ───→ (dopamine modulation)
 ```
 
-### Brain Regions
+### Brain Regions (228,192 neurons)
 
 | Region | Neurons | Role |
 |--------|---------|------|
@@ -24,26 +24,39 @@ Webcam → [Retinal Encoder] → LGN → V1 → V2/V4 → IT
 | VTA | 2,000 | Dopamine reward prediction error |
 | Striatum | 20,000 | D1/D2 Go/NoGo action selection |
 | Motor | 5,000 | Action output, population decoding |
-| **Total** | **~210,000** | |
+| Wernicke's | 10,000 | Language comprehension (semantic attractors) |
+| Broca's | 8,000 | Speech production (6 vocal output pools) |
+| **Total** | **228,192** | |
 
 ### Simulation Engine
 
-**Hybrid CPU + Metal GPU** — event-driven spike routing on CPU with batch neuron updates dispatched to Metal compute shaders when spike bursts arrive.
+**Hybrid CPU + GPU** — event-driven spike routing on CPU with batch neuron updates on GPU.
 
-- **Real-time**: 1ms simulation = 1ms wall-clock, 0.1ms substeps
-- **Event-driven**: neurons only compute when receiving spikes (no wasted cycles on silent neurons)
-- **Metal acceleration**: batch updates on GPU via unified memory (zero-copy on Apple Silicon)
+- **Real-time target**: 1ms simulation = 1ms wall-clock, 0.1ms substeps
+- **Event-driven**: neurons only compute when receiving spikes
+- **GPU acceleration**: Metal (macOS) or CUDA (Linux) for batch neuron updates
+- **Vocal synthesis**: Broca's area output pools drive a formant-based synthesizer via CoreAudio (macOS) or PulseAudio (Linux)
 
-### Neuron Models (selectable per-region)
+### Platform Support
+
+| Component | macOS | Linux |
+|-----------|-------|-------|
+| GPU compute | Metal (Apple Silicon) | CUDA (NVIDIA RTX) |
+| Webcam | AVFoundation | V4L2 |
+| Audio output | CoreAudio | PulseAudio |
+| GUI | Qt6 | Qt6 |
+| Build | CMake + Clang | CMake + GCC/nvcc |
+
+### Neuron Models (selectable per-region at runtime)
 
 - **Izhikevich** (default) — 20+ firing patterns from 2 equations
-- **Hodgkin-Huxley** — full ion-channel dynamics (Na⁺, K⁺, Ca²⁺)
+- **Hodgkin-Huxley** — full ion-channel dynamics (Na+, K+, Ca2+)
 - **AdEx** — adaptive exponential integrate-and-fire
 - **LIF** — leaky integrate-and-fire (baseline comparison)
 
 ### Synapse Model
 
-- Conductance-based: AMPA, NMDA (voltage-gated Mg²⁺ block), GABA-A, GABA-B
+- Conductance-based: AMPA, NMDA (voltage-gated Mg2+ block), GABA-A, GABA-B
 - Short-term plasticity: Tsodyks-Markram facilitation/depression
 - Axonal delays: myelinated (1-5ms) and unmyelinated (5-20ms)
 
@@ -56,10 +69,10 @@ Webcam → [Retinal Encoder] → LGN → V1 → V2/V4 → IT
 
 ## Qt6 Frontend
 
-Four-panel dashboard:
+Four-panel dark-themed dashboard:
 1. **Brain Region Tree** — hierarchical region browser with neuron counts and firing rates
 2. **Spike Raster** — real-time scrolling spike plot for selected region
-3. **Webcam + Activity Map** — live camera feed and per-region activity visualization
+3. **Webcam + Activity Map** — live camera feed with camera selector, per-region activity glow
 4. **Backend Config** — per-region dropdowns for neuron model, compute backend, synapse types, plasticity rule, myelination, and raw parameters
 
 ## Building
@@ -67,7 +80,6 @@ Four-panel dashboard:
 ### macOS (Metal GPU)
 
 ```bash
-# Requirements: Xcode, Qt6, HDF5
 brew install qt@6 hdf5
 
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -79,7 +91,6 @@ open ./build/BioBrain.app
 ### Ubuntu/Linux (NVIDIA CUDA GPU)
 
 ```bash
-# Requirements: CUDA toolkit, Qt6, PulseAudio, V4L2, HDF5
 sudo apt install -y qt6-base-dev libqt6multimedia6 \
     libpulse-dev libhdf5-dev cmake g++ \
     nvidia-cuda-toolkit libv4l-dev
@@ -89,17 +100,36 @@ cmake --build build -j$(nproc)
 ./build/BioBrain
 ```
 
-### Debug API
+### Docker (Linux + NVIDIA GPU)
 
-The simulation exposes a REST debug API on port 9090:
 ```bash
-curl http://localhost:9090/api/sim/status     # simulation state
-curl http://localhost:9090/api/regions         # brain region stats
-curl http://localhost:9090/api/webcam/cameras  # list cameras
-curl -X POST http://localhost:9090/api/webcam/switch?id=DEVICE_ID
+docker build -t biobrain .
+docker run --gpus all -p 9090:9090 biobrain
 ```
 
-Open http://localhost:9090 in a browser for the interactive dashboard.
+The Docker container runs the headless REST harness on port 9090. For the full GUI, use the native build or run with X11 forwarding:
+```bash
+docker run --gpus all -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix \
+    --device /dev/video0 -p 9090:9090 biobrain ./BioBrain
+```
+
+### Debug REST API
+
+The simulation exposes a REST API on port 9090:
+```bash
+curl http://localhost:9090/                          # web dashboard
+curl http://localhost:9090/api/sim/status             # simulation state
+curl http://localhost:9090/api/regions                # brain region stats
+curl http://localhost:9090/api/region/2               # V1 detail + voltages
+curl http://localhost:9090/api/neuron/1/42            # single LGN neuron state
+curl http://localhost:9090/api/profile                # step timing + real-time ratio
+curl http://localhost:9090/api/screenshot             # PNG screenshot (base64)
+curl http://localhost:9090/api/webcam/cameras         # list cameras
+curl -X POST http://localhost:9090/api/webcam/switch?id=DEVICE_ID
+curl -X POST http://localhost:9090/api/sim/inject/region?id=9&count=500  # stimulate Broca's
+curl http://localhost:9090/api/debug/trace            # projection wiring map
+curl http://localhost:9090/api/memory                 # memory usage estimate
+```
 
 ## Project Structure
 
@@ -107,13 +137,14 @@ Open http://localhost:9090 in a browser for the interactive dashboard.
 src/
 ├── core/           # Neuron models, synapses, spike routing, simulation clock
 ├── plasticity/     # STDP, dopamine-modulated STDP, neuromodulatory rules
-├── input/          # Webcam capture, retinal encoder
-├── regions/        # Brain region implementations (LGN, V1, V2/V4, IT, VTA, Striatum, Motor)
+├── input/          # Webcam capture (AVFoundation macOS / V4L2 Linux), retinal encoder
+├── regions/        # Brain regions: Retina, LGN, V1, V2/V4, IT, VTA, Striatum, Motor, Wernicke's, Broca's
 ├── compute/        # CPU, Metal (macOS), and CUDA (Linux) compute backends
-├── metal/          # Metal compute shaders (.metal files)
-├── cuda/           # CUDA compute kernels (.cu files)
+├── metal/          # Metal compute shaders (.metal)
+├── cuda/           # CUDA compute kernels (.cu)
 ├── audio/          # Vocal synthesizer (CoreAudio macOS / PulseAudio Linux)
 ├── gui/            # Qt6 frontend widgets
+├── harness/        # REST debug API and test harness
 ├── recording/      # HDF5 spike data recorder
 └── main.cpp        # Application entry point
 ```
@@ -124,6 +155,7 @@ src/
 - Bi, G. & Poo, M. (1998). Synaptic modifications in cultured hippocampal neurons. J Neuroscience.
 - Tsodyks, M. & Markram, H. (1997). The neural code between neocortical pyramidal neurons. PNAS.
 - Dayan, P. & Abbott, L.F. (2001). Theoretical Neuroscience. MIT Press.
+- Izhikevich, E.M. (2007). Solving the distal reward problem through STDP and dopamine. Cerebral Cortex.
 
 ## License
 
