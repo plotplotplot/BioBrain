@@ -127,7 +127,15 @@ void RestHarness::handleClient(int client_fd) {
         body = "{\"error\":\"Not found\",\"path\":\"" + req.path + "\"}";
     }
 
-    sendResponse(client_fd, status, body);
+    // Auto-detect content type from response body
+    std::string content_type = "application/json";
+    if (body.size() > 15 && body.find("<!DOCTYPE") < 10) {
+        content_type = "text/html; charset=utf-8";
+    } else if (body.size() > 10 && body.find("<html") < 10) {
+        content_type = "text/html; charset=utf-8";
+    }
+
+    sendResponse(client_fd, status, body, content_type);
 }
 
 RestHarness::Request RestHarness::parseRequest(const std::string& raw) {
