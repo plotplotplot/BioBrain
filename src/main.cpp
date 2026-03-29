@@ -37,6 +37,10 @@
 // GUI
 #include "gui/MainWindow.h"
 #include "gui/WebcamWidget.h"
+#include "gui/SpikeRasterWidget.h"
+
+// Debug API
+#include "harness/DebugAPI.h"
 
 using namespace biobrain;
 
@@ -195,6 +199,31 @@ int main(int argc, char* argv[]) {
         std::cerr << "Warning: Could not start webcam. Running without visual input.\n";
     }
 
+    // Debug REST API on port 9090
+    auto debugApi = std::make_unique<DebugAPI>(simulation, webcam.get(),
+                                                mainWindow.get(), 9090);
+
+    // Wire spike callback to both GUI and debug API
+    auto* debugApiPtr = debugApi.get();
+    simulation->setSpikeCallback(
+        [&mainWindow, debugApiPtr](uint32_t region_id,
+                                    const std::vector<uint32_t>& neuron_ids,
+                                    const std::vector<double>& times) {
+            // Feed GUI spike raster
+            auto* raster = mainWindow->findChild<SpikeRasterWidget*>();
+            if (raster) {
+                QMetaObject::invokeMethod(raster, [raster, neuron_ids, times]() {
+                    raster->addSpikes(neuron_ids, times);
+                }, Qt::QueuedConnection);
+            }
+            // Feed debug API activity log
+            debugApiPtr->recordSpikeBatch(region_id, neuron_ids.size(),
+                                           times.empty() ? 0 : times.back());
+        });
+
+    debugApi->start();
+    std::cout << "Debug API: http://localhost:9090\n";
+
     // Auto-start the simulation
     simulation->start();
     recorder->start();
@@ -217,6 +246,7 @@ int main(int argc, char* argv[]) {
     int result = app.exec();
 
     // Cleanup
+    debugApi->stop();
     simulation->stop();
     recorder->stop();
     webcam->stop();

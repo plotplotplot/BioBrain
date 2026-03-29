@@ -138,6 +138,11 @@ endif()
 
 # --- Executable ---
 
+set(HARNESS_API_SOURCES
+    src/harness/RestHarness.cpp
+    src/harness/DebugAPI.cpp
+)
+
 add_executable(BioBrain
     src/main.cpp
     ${CORE_SOURCES}
@@ -147,10 +152,19 @@ add_executable(BioBrain
     ${COMPUTE_SOURCES}
     ${GUI_SOURCES}
     ${RECORDING_SOURCES}
+    ${HARNESS_API_SOURCES}
     ${QCUSTOMPLOT_SOURCES}
 )
 
 add_dependencies(BioBrain MetalShaders)
+
+# Info.plist for camera permission on macOS
+set_target_properties(BioBrain PROPERTIES
+    MACOSX_BUNDLE TRUE
+    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/Info.plist
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.biobrain.app"
+    MACOSX_BUNDLE_BUNDLE_NAME "BioBrain"
+)
 
 target_include_directories(BioBrain PRIVATE
     ${CMAKE_SOURCE_DIR}/src
