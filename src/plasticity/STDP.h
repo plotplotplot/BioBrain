@@ -13,16 +13,18 @@ namespace biobrain {
 ///
 /// Slightly asymmetric: A_minus > A_plus so LTD dominates on average,
 /// consistent with experimental findings (Bi & Poo 1998, J. Neuroscience).
+struct STDPParams {
+    double A_plus   = 0.01;    // LTP amplitude
+    double A_minus  = 0.012;   // LTD amplitude (slightly larger → LTD-dominant)
+    double tau_plus  = 20.0;   // LTP time constant (ms)
+    double tau_minus = 20.0;   // LTD time constant (ms)
+    double w_min     = 0.0;    // minimum synaptic weight
+    double w_max     = 1.0;    // maximum synaptic weight
+};
+
 class STDP : public PlasticityRule {
 public:
-    struct Params {
-        double A_plus   = 0.01;    // LTP amplitude
-        double A_minus  = 0.012;   // LTD amplitude (slightly larger → LTD-dominant)
-        double tau_plus  = 20.0;   // LTP time constant (ms)
-        double tau_minus = 20.0;   // LTD time constant (ms)
-        double w_min     = 0.0;    // minimum synaptic weight
-        double w_max     = 1.0;    // maximum synaptic weight
-    };
+    using Params = STDPParams;
 
     explicit STDP(Params params = {});
 

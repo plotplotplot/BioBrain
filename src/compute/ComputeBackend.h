@@ -5,7 +5,8 @@
 #include <span>
 
 // Forward declarations
-class BrainRegion;
+namespace biobrain { class BrainRegion; }
+using biobrain::BrainRegion;
 
 // Results from a batch neuron update
 struct UpdateResult {

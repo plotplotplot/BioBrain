@@ -1,5 +1,6 @@
 #include "HodgkinHuxleyNeuron.h"
 #include <cmath>
+#include <algorithm>
 
 namespace biobrain {
 

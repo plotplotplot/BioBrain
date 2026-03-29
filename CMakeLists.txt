@@ -75,7 +75,7 @@ set(PLASTICITY_SOURCES
 )
 
 set(INPUT_SOURCES
-    src/input/WebcamCapture.cpp
+    src/input/WebcamCapture.mm
     src/input/RetinalEncoder.cpp
 )
 
@@ -158,4 +158,30 @@ target_link_libraries(BioBrain PRIVATE
 add_custom_command(TARGET BioBrain POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy ${METALLIB_FILE} $<TARGET_FILE_DIR:BioBrain>/BioBrain.metallib
     COMMENT "Copying Metal shader library to output directory"
+)
+
+# --- REST Test Harness (no Qt, no HDF5, no Metal required) ---
+
+set(HARNESS_SOURCES
+    src/harness/main_harness.cpp
+    src/harness/RestHarness.cpp
+)
+
+add_executable(BioBrainHarness
+    ${HARNESS_SOURCES}
+    ${CORE_SOURCES}
+    ${PLASTICITY_SOURCES}
+    ${REGION_SOURCES}
+    src/compute/CPUBackend.cpp
+    src/recording/SpikeRecorder.cpp
+)
+
+target_include_directories(BioBrainHarness PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_compile_definitions(BioBrainHarness PRIVATE NO_METAL NO_QT)
+
+target_link_libraries(BioBrainHarness PRIVATE
+    ${FOUNDATION_FRAMEWORK}
 )

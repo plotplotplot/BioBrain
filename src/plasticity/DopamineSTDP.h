@@ -22,25 +22,20 @@ namespace biobrain {
 /// References:
 ///   Izhikevich (2007) "Solving the distal reward problem through linkage
 ///   of STDP and dopamine signaling", Cerebral Cortex.
+struct DopamineSTDPParams {
+    double A_plus    = 0.01;
+    double A_minus   = 0.012;
+    double tau_plus   = 20.0;   // ms
+    double tau_minus  = 20.0;   // ms
+    double tau_e     = 1000.0;  // eligibility trace decay time constant (ms)
+    double DA_tonic  = 0.01;    // tonic dopamine baseline
+    double w_min     = 0.0;
+    double w_max     = 1.0;
+};
+
 class DopamineSTDP : public PlasticityRule {
 public:
-    struct Params {
-        // STDP window parameters (same as standard STDP)
-        double A_plus    = 0.01;
-        double A_minus   = 0.012;
-        double tau_plus   = 20.0;   // ms
-        double tau_minus  = 20.0;   // ms
-
-        // Eligibility trace
-        double tau_e     = 1000.0;  // eligibility trace decay time constant (ms)
-
-        // Dopamine
-        double DA_tonic  = 0.01;    // tonic dopamine baseline (prevents learning halt)
-
-        // Weight bounds
-        double w_min     = 0.0;
-        double w_max     = 1.0;
-    };
+    using Params = DopamineSTDPParams;
 
     explicit DopamineSTDP(Params params = {});
 

@@ -30,25 +30,20 @@ enum class ModulatorType {
 /// References:
 ///   Izhikevich (2007); Frémaux & Gerstner (2016) "Neuromodulated STDP";
 ///   Doya (2002) "Metalearning and neuromodulation".
+struct NeuromodulatorySTDPParams {
+    double A_plus    = 0.01;
+    double A_minus   = 0.012;
+    double tau_plus   = 20.0;   // ms
+    double tau_minus  = 20.0;   // ms
+    double tau_e     = 1000.0;  // ms
+    double DA_tonic  = 0.01;
+    double w_min     = 0.0;
+    double w_max     = 1.0;
+};
+
 class NeuromodulatorySTDP : public PlasticityRule {
 public:
-    struct Params {
-        // STDP window parameters
-        double A_plus    = 0.01;
-        double A_minus   = 0.012;
-        double tau_plus   = 20.0;   // ms
-        double tau_minus  = 20.0;   // ms
-
-        // Eligibility trace (base, before NE modulation)
-        double tau_e     = 1000.0;  // ms
-
-        // Dopamine baseline
-        double DA_tonic  = 0.01;
-
-        // Weight bounds
-        double w_min     = 0.0;
-        double w_max     = 1.0;
-    };
+    using Params = NeuromodulatorySTDPParams;
 
     explicit NeuromodulatorySTDP(Params params = {});
 
