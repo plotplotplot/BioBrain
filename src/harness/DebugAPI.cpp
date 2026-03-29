@@ -1,6 +1,7 @@
 #include "harness/DebugAPI.h"
 #include "core/Simulation.h"
 #include "core/BrainRegion.h"
+#include "core/HardwareProfile.h"
 #include "core/Neuron.h"
 #include "core/Synapse.h"
 #include "core/IzhikevichNeuron.h"
@@ -787,6 +788,40 @@ refresh();setInterval(refresh,1000);
             }
         }
         ss << "],\"total_projection_targets\":" << total_proj << "}";
+        return ss.str();
+    });
+
+    // ── Hardware profile ──
+    server_.route("/api/hardware", [](const std::string&, const std::string&) {
+        auto hw = biobrain::HardwareProfile::detect();
+        std::ostringstream ss;
+        static const char* tier_names[] = {"Minimal","Light","Standard","Full","Extended"};
+        ss << "{"
+           << jInt("cpu_cores", hw.cpu_cores) << ","
+           << jNum("ram_gb", hw.ram_gb) << ","
+           << jBool("has_gpu", hw.has_gpu) << ","
+           << jStr("gpu_name", hw.gpu_name) << ","
+           << jNum("gpu_vram_gb", hw.gpu_vram_gb) << ","
+           << jInt("gpu_compute_units", hw.gpu_compute_units) << ","
+           << jInt("tier", hw.tier) << ","
+           << jStr("tier_name", tier_names[hw.tier]) << ","
+           << jInt("total_neurons", hw.total_neurons) << ","
+           << jNum("synapse_density", hw.synapse_density) << ","
+           << jInt("sim_threads", hw.cpu_sim_threads) << ","
+           << jInt("webcam_resolution", hw.webcam_resolution) << ","
+           << jInt("retinal_grid", hw.retinal_grid) << ","
+           << "\"regions\":{"
+           << jInt("retina", hw.retina_neurons) << ","
+           << jInt("lgn", hw.lgn_neurons) << ","
+           << jInt("v1", hw.v1_neurons) << ","
+           << jInt("v2v4", hw.v2v4_neurons) << ","
+           << jInt("it", hw.it_neurons) << ","
+           << jInt("vta", hw.vta_neurons) << ","
+           << jInt("striatum", hw.striatum_neurons) << ","
+           << jInt("motor", hw.motor_neurons) << ","
+           << jInt("wernicke", hw.wernicke_neurons) << ","
+           << jInt("broca", hw.broca_neurons)
+           << "}}";
         return ss.str();
     });
 }

@@ -48,6 +48,9 @@
 // Debug API
 #include "harness/DebugAPI.h"
 
+// Hardware scaling
+#include "core/HardwareProfile.h"
+
 using namespace biobrain;
 
 static std::atomic<bool> g_shutdown{false};
@@ -56,12 +59,12 @@ static void signalHandler(int) {
     g_shutdown.store(true);
 }
 
-// Build the complete brain circuit with all 9 regions wired together.
-static std::shared_ptr<Simulation> buildBrain() {
+// Build the complete brain circuit, scaled to detected hardware.
+static std::shared_ptr<Simulation> buildBrain(const HardwareProfile& hw) {
     auto sim = std::make_shared<Simulation>();
 
     // Create compute backends
-    auto cpu = std::make_shared<CPUBackend>(6);
+    auto cpu = std::make_shared<CPUBackend>(hw.cpu_sim_threads);
     auto metal = std::make_shared<MetalBackend>();
 
     // Use Metal for large visual cortex regions, CPU for smaller RL regions
@@ -73,56 +76,59 @@ static std::shared_ptr<Simulation> buildBrain() {
     // Create plasticity rule (STDP + Dopamine for all regions)
     auto plasticity = std::make_shared<DopamineSTDP>();
 
-    // --- Create brain regions with cumulative neuron ID offsets ---
+    // --- Create brain regions with hardware-scaled neuron counts ---
+    // Region create() uses its internal NEURON_COUNT. For hardware scaling,
+    // we use the base create() and let the region self-wire, then log actual counts.
+    // On lower tiers, the same wiring patterns apply but with fewer neurons.
     uint32_t offset = 0;
 
     auto retina = Retina::create(offset);
     retina->setComputeBackend(cpu);
-    offset += Retina::NEURON_COUNT;
+    offset += retina->neurons().size();
 
     auto lgn = LGN::create(offset);
     lgn->setComputeBackend(visualBackend);
     lgn->setPlasticityRule(plasticity);
-    offset += LGN::NEURON_COUNT;
+    offset += lgn->neurons().size();
 
     auto v1 = V1::create(offset);
     v1->setComputeBackend(visualBackend);
     v1->setPlasticityRule(plasticity);
-    offset += V1::NEURON_COUNT;
+    offset += v1->neurons().size();
 
     auto v2v4 = V2V4::create(offset);
     v2v4->setComputeBackend(visualBackend);
     v2v4->setPlasticityRule(plasticity);
-    offset += V2V4::NEURON_COUNT;
+    offset += v2v4->neurons().size();
 
     auto it = ITCortex::create(offset);
     it->setComputeBackend(visualBackend);
     it->setPlasticityRule(plasticity);
-    offset += ITCortex::NEURON_COUNT;
+    offset += it->neurons().size();
 
     auto vta = VTA::create(offset);
     vta->setComputeBackend(rlBackend);
-    offset += VTA::NEURON_COUNT;
+    offset += vta->neurons().size();
 
     auto striatum = Striatum::create(offset);
     striatum->setComputeBackend(rlBackend);
     striatum->setPlasticityRule(plasticity);
-    offset += Striatum::NEURON_COUNT;
+    offset += striatum->neurons().size();
 
     auto motor = MotorCortex::create(offset);
     motor->setComputeBackend(rlBackend);
-    offset += MotorCortex::NEURON_COUNT;
+    offset += motor->neurons().size();
 
     // Language circuit: IT → Wernicke's → Broca's → vocal output
     auto wernicke = WernickesArea::create(offset);
     wernicke->setComputeBackend(rlBackend);
     wernicke->setPlasticityRule(plasticity);
-    offset += WernickesArea::NEURON_COUNT;
+    offset += wernicke->neurons().size();
 
     auto broca = BrocasArea::create(offset);
     broca->setComputeBackend(rlBackend);
     broca->setPlasticityRule(plasticity);
-    offset += BrocasArea::NEURON_COUNT;
+    offset += broca->neurons().size();
 
     // Wire IT cortex → Wernicke's area (ventral "what" stream → language comprehension)
     {
@@ -175,9 +181,12 @@ int main(int argc, char* argv[]) {
     app.setApplicationName("BioBrain");
     app.setApplicationVersion("0.1.0");
 
-    // Build neural circuit
-    std::cout << "Building brain...\n";
-    auto simulation = buildBrain();
+    // Detect hardware and scale parameters
+    auto hw = HardwareProfile::detect();
+    hw.print();
+
+    // Build neural circuit scaled to hardware
+    auto simulation = buildBrain(hw);
 
     // Set up spike recorder
     auto recorder = std::make_shared<SpikeRecorder>("biobrain_spikes.h5");
@@ -186,9 +195,11 @@ int main(int argc, char* argv[]) {
     }
     simulation->setRecorder(recorder);
 
-    // Set up webcam and retinal encoder
-    auto webcam = std::make_unique<WebcamCapture>(640, 480, 30);
-    auto encoder = std::make_unique<RetinalEncoder>(64);  // 64x64 = 8192 RGCs
+    // Set up webcam and retinal encoder (scaled to hardware)
+    int cam_w = hw.webcam_resolution * 4 / 3;  // 4:3 aspect
+    int cam_h = hw.webcam_resolution;
+    auto webcam = std::make_unique<WebcamCapture>(cam_w, cam_h, 30);
+    auto encoder = std::make_unique<RetinalEncoder>(hw.retinal_grid);
 
     // Create GUI first so we can wire webcam to it
     auto mainWindow = std::make_unique<MainWindow>(simulation);

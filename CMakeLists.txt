@@ -199,6 +199,7 @@ set(CORE_SOURCES
     src/core/SpikeRouter.cpp
     src/core/BrainRegion.cpp
     src/core/Simulation.cpp
+    src/core/HardwareProfile.cpp
 )
 
 set(PLASTICITY_SOURCES
