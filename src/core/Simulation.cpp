@@ -166,11 +166,31 @@ void Simulation::stepSimulation() {
         }
 
         if (region_has_events || region->activeNeuronCount() > 0) {
-            // Only scan synapses for this region
+            // Internal synapses: post_id is global ID
             for (size_t si = 0; si < synapses.size(); ++si) {
                 auto& syn = synapses[si];
                 if (syn.conductance() <= 0.0) continue;
                 uint32_t local_idx = syn.post_id - region->baseNeuronId();
+                if (local_idx < n) {
+                    double V_post = region->neurons()[local_idx]->voltage();
+                    I_syn[local_idx] += syn.computeCurrent(V_post, DT);
+                    has_activity = true;
+                }
+            }
+        }
+
+        // Incoming projection synapses from OTHER regions:
+        // These live in source_region->projections()[this_region_id].
+        // post_id is a LOCAL index in this region (0-based).
+        for (auto& source_region : regions_) {
+            if (source_region->id() == region->id()) continue;
+            auto& proj = source_region->projections();
+            auto it = proj.find(region->id());
+            if (it == proj.end()) continue;
+            for (auto& syn : const_cast<std::vector<Synapse>&>(it->second)) {
+                if (syn.conductance() <= 0.0) continue;
+                // post_id is LOCAL index (0-based) for projection synapses
+                uint32_t local_idx = syn.post_id;
                 if (local_idx < n) {
                     double V_post = region->neurons()[local_idx]->voltage();
                     I_syn[local_idx] += syn.computeCurrent(V_post, DT);
@@ -228,6 +248,7 @@ void Simulation::stepSimulation() {
                         ev.source_region = region->id();
                         ev.target_region = target_region_id;
                         router_.submitSpike(ev);
+                        debug_inter_region_events_.fetch_add(1, std::memory_order_relaxed);
                     }
                 }
             }
@@ -290,11 +311,20 @@ void Simulation::deliverSpikes(const std::vector<SpikeEvent>& events) {
             if (!source) continue;
             auto& proj = source->projections();
             auto it = proj.find(ev.target_region);
+            debug_delivered_events_.fetch_add(1, std::memory_order_relaxed);
             if (it != proj.end()) {
                 for (auto& syn : const_cast<std::vector<Synapse>&>(it->second)) {
                     if (syn.pre_id == ev.source_id && syn.post_id == ev.target_id) {
                         syn.deliverSpike(arrival_time);
-                        break;  // typically 1:1 mapping
+                        debug_projection_matches_.fetch_add(1, std::memory_order_relaxed);
+
+                        // Also inject direct current into target neuron
+                        // (models strong thalamocortical / feedforward synapses)
+                        BrainRegion* target = getRegion(ev.target_region);
+                        if (target && ev.target_id < target->neurons().size()) {
+                            target->injectCurrent(ev.target_id, syn.weight * 10.0);
+                        }
+                        break;
                     }
                 }
             }

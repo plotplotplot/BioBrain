@@ -44,39 +44,29 @@ void BrainRegion::setPlasticityRule(std::shared_ptr<PlasticityRule> rule) {
 }
 
 double BrainRegion::firingRate() const {
+    std::lock_guard lock(spike_times_mutex_);
     if (neuron_count_ == 0) return 0.0;
-
-    double window_start = current_time_ - 100.0; // last 100ms
+    double window_start = current_time_ - 100.0;
     size_t count = 0;
     for (const auto& t : recent_spike_times_) {
-        if (t >= window_start) {
-            ++count;
-        }
+        if (t >= window_start) ++count;
     }
-    // Hz = spikes / (neuron_count * window_in_seconds)
-    // window = 100ms = 0.1s
     return static_cast<double>(count) / (static_cast<double>(neuron_count_) * 0.1);
 }
 
 uint32_t BrainRegion::activeNeuronCount() const {
+    std::lock_guard lock(spike_times_mutex_);
     double window_start = current_time_ - 100.0;
-    // Count unique neurons that spiked -- approximate by counting recent spikes
-    // (a neuron may spike multiple times, but this is a simple estimate)
     size_t count = 0;
     for (const auto& t : recent_spike_times_) {
-        if (t >= window_start) {
-            ++count;
-        }
+        if (t >= window_start) ++count;
     }
-    // Cap at neuron_count_ since we can't have more active neurons than total
     return static_cast<uint32_t>(std::min(count, static_cast<size_t>(neuron_count_)));
 }
 
 void BrainRegion::recordSpikeTime(double t) {
+    std::lock_guard lock(spike_times_mutex_);
     recent_spike_times_.push_back(t);
-
-    // Prune old spike times (older than 200ms) to prevent unbounded growth.
-    // We keep a generous window so firingRate() has clean data.
     if (recent_spike_times_.size() > 100000) {
         double cutoff = current_time_ - 200.0;
         recent_spike_times_.erase(

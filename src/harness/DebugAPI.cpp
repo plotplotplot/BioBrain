@@ -670,4 +670,123 @@ refresh();setInterval(refresh,1000);
            << "}";
         return ss.str();
     });
+
+    // ── Debug: propagation counters ──
+    server_.route("/api/debug/counters", [this](const std::string&, const std::string&) {
+        std::ostringstream ss;
+        ss << "{"
+           << jInt("inter_region_events_submitted", sim_->debug_inter_region_events_.load())
+           << "," << jInt("inter_region_events_delivered", sim_->debug_delivered_events_.load())
+           << "," << jInt("projection_synapse_matches", sim_->debug_projection_matches_.load())
+           << "," << jNum("sim_time_ms", sim_->currentTime())
+           << "}";
+        return ss.str();
+    });
+
+    // ── Debug: trace spike propagation path ──
+    // GET /api/debug/trace — inspect projection wiring and spike queue
+    server_.route("/api/debug/trace", [this](const std::string&, const std::string&) {
+        std::ostringstream ss;
+        ss << "{\"regions\":[";
+        bool first_r = true;
+        for (auto& r : sim_->regions()) {
+            if (!first_r) ss << ",";
+            ss << "{" << jStr("name", r->name())
+               << "," << jInt("id", r->id())
+               << "," << jInt("base_neuron_id", r->baseNeuronId())
+               << "," << jInt("neuron_count", r->neurons().size())
+               << "," << jNum("firing_rate", r->firingRate())
+               << "," << jInt("internal_synapses", r->internalSynapses().size())
+               << ",\"projections\":[";
+            bool first_p = true;
+            for (auto& [tid, syns] : r->projections()) {
+                if (!first_p) ss << ",";
+                // Sample first synapse to show ID ranges
+                uint32_t min_pre = UINT32_MAX, max_pre = 0;
+                uint32_t min_post = UINT32_MAX, max_post = 0;
+                for (auto& s : syns) {
+                    if (s.pre_id < min_pre) min_pre = s.pre_id;
+                    if (s.pre_id > max_pre) max_pre = s.pre_id;
+                    if (s.post_id < min_post) min_post = s.post_id;
+                    if (s.post_id > max_post) max_post = s.post_id;
+                }
+                ss << "{"
+                   << jInt("target_region", tid) << ","
+                   << jInt("count", syns.size()) << ","
+                   << jInt("pre_id_min", min_pre) << ","
+                   << jInt("pre_id_max", max_pre) << ","
+                   << jInt("post_id_min", min_post) << ","
+                   << jInt("post_id_max", max_post)
+                   << "}";
+                first_p = false;
+            }
+            ss << "]}";
+            first_r = false;
+        }
+        ss << "],\"spike_queue_size\":" << 0  // can't access router directly
+           << "}";
+        return ss.str();
+    });
+
+    // ── Debug: manually fire one LGN neuron and trace what happens ──
+    server_.route("/api/debug/fire", [this](const std::string& path, const std::string&) {
+        uint32_t region_id = 1;  // LGN default
+        uint32_t local_idx = 0;
+        auto qpos = path.find('?');
+        if (qpos != std::string::npos) {
+            std::string q = path.substr(qpos + 1);
+            auto p1 = q.find("region=");
+            if (p1 != std::string::npos) region_id = std::stoi(q.substr(p1 + 7));
+            auto p2 = q.find("idx=");
+            if (p2 != std::string::npos) local_idx = std::stoi(q.substr(p2 + 4));
+        }
+
+        auto* region = sim_->getRegion(region_id);
+        if (!region) return std::string("{\"error\":\"region not found\"}");
+        if (local_idx >= region->neurons().size())
+            return std::string("{\"error\":\"index out of range\"}");
+
+        uint32_t neuron_id = region->baseNeuronId() + local_idx;
+        double t = sim_->currentTime();
+
+        std::ostringstream ss;
+        ss << "{\"fired_neuron\":" << neuron_id
+           << ",\"region\":\"" << region->name() << "\""
+           << ",\"local_idx\":" << local_idx;
+
+        // Check what internal synapses this neuron has (as pre)
+        auto& int_syns = region->getSynapsesForPreNeuron(neuron_id);
+        ss << ",\"internal_targets\":" << int_syns.size();
+
+        // Check what projection synapses this neuron has
+        ss << ",\"projections\":[";
+        bool first = true;
+        int total_proj = 0;
+        for (auto& [tid, proj_syns] : region->projections()) {
+            int count = 0;
+            uint32_t sample_post = 0;
+            for (auto& syn : proj_syns) {
+                if (syn.pre_id == neuron_id) {
+                    count++;
+                    sample_post = syn.post_id;
+                }
+            }
+            if (count > 0) {
+                if (!first) ss << ",";
+                auto* target = sim_->getRegion(tid);
+                ss << "{"
+                   << jInt("target_region", tid)
+                   << "," << jStr("target_name", target ? target->name() : "?")
+                   << "," << jInt("synapse_count", count)
+                   << "," << jInt("sample_post_id", sample_post)
+                   << "," << jInt("target_base_id", target ? target->baseNeuronId() : 0)
+                   << "," << jInt("target_neuron_count", target ? target->neurons().size() : 0)
+                   << "}";
+                total_proj += count;
+                first = false;
+            }
+        }
+        ss << "],\"total_projection_targets\":" << total_proj << "}";
+        return ss.str();
+    });
 }

@@ -85,6 +85,13 @@ private:
     std::atomic<uint64_t> spike_count_last_second_{0};
     double last_rate_update_time_ = 0.0;
 
+public:
+    // Debug counters
+    std::atomic<uint64_t> debug_inter_region_events_{0};
+    std::atomic<uint64_t> debug_delivered_events_{0};
+    std::atomic<uint64_t> debug_projection_matches_{0};
+private:
+
     // --- Internal methods ---
     void simulationLoop(std::stop_token stop_token);
     void stepSimulation();

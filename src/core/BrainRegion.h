@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <cstdint>
+#include <mutex>
 #include <unordered_map>
 
 class ComputeBackend;
@@ -88,7 +89,8 @@ private:
     NeuronModelType current_model_ = NeuronModelType::Izhikevich;
     double current_time_ = 0.0;
 
-    /// Recent spike times for firing rate calculation.
+    /// Recent spike times for firing rate calculation (mutex-protected).
+    mutable std::mutex spike_times_mutex_;
     std::vector<double> recent_spike_times_;
 
     /// Factory method to create a neuron of the given model type.
