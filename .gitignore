@@ -1,0 +1,29 @@
+# Build
+build/
+cmake-build-*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Compiled
+*.o
+*.a
+*.dylib
+*.so
+*.metallib
+*.air
+
+# Generated
+compile_commands.json
+
+# Data
+*.h5
+*.hdf5
+
+# Superpowers
+.superpowers/
