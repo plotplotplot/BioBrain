@@ -64,28 +64,42 @@ Four-panel dashboard:
 
 ## Building
 
-### Requirements
-
-- macOS 15+ (Metal 4 GPU support)
-- C++20 compiler (Apple Clang 16+)
-- CMake 3.28+
-- Qt6 6.7+ (`brew install qt@6`)
-- HDF5 (`brew install hdf5`)
-- QCustomPlot 2.1+
-
-### Build
+### macOS (Metal GPU)
 
 ```bash
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . -j$(sysctl -n hw.ncpu)
+# Requirements: Xcode, Qt6, HDF5
+brew install qt@6 hdf5
+
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(sysctl -n hw.ncpu)
+codesign --force --deep --sign - ./build/BioBrain.app
+open ./build/BioBrain.app
 ```
 
-### Run
+### Ubuntu/Linux (NVIDIA CUDA GPU)
 
 ```bash
+# Requirements: CUDA toolkit, Qt6, PulseAudio, V4L2, HDF5
+sudo apt install -y qt6-base-dev libqt6multimedia6 \
+    libpulse-dev libhdf5-dev cmake g++ \
+    nvidia-cuda-toolkit libv4l-dev
+
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
 ./build/BioBrain
 ```
+
+### Debug API
+
+The simulation exposes a REST debug API on port 9090:
+```bash
+curl http://localhost:9090/api/sim/status     # simulation state
+curl http://localhost:9090/api/regions         # brain region stats
+curl http://localhost:9090/api/webcam/cameras  # list cameras
+curl -X POST http://localhost:9090/api/webcam/switch?id=DEVICE_ID
+```
+
+Open http://localhost:9090 in a browser for the interactive dashboard.
 
 ## Project Structure
 
@@ -95,8 +109,10 @@ src/
 ├── plasticity/     # STDP, dopamine-modulated STDP, neuromodulatory rules
 ├── input/          # Webcam capture, retinal encoder
 ├── regions/        # Brain region implementations (LGN, V1, V2/V4, IT, VTA, Striatum, Motor)
-├── compute/        # CPU and Metal compute backend abstraction
+├── compute/        # CPU, Metal (macOS), and CUDA (Linux) compute backends
 ├── metal/          # Metal compute shaders (.metal files)
+├── cuda/           # CUDA compute kernels (.cu files)
+├── audio/          # Vocal synthesizer (CoreAudio macOS / PulseAudio Linux)
 ├── gui/            # Qt6 frontend widgets
 ├── recording/      # HDF5 spike data recorder
 └── main.cpp        # Application entry point
