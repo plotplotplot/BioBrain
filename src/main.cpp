@@ -192,12 +192,15 @@ int main(int argc, char* argv[]) {
         sim->injectSpikes(events);
     });
 
-    // Start webcam
-    if (webcam->start()) {
-        std::cout << "Webcam started (640x480 @ 30fps)\n";
-    } else {
-        std::cerr << "Warning: Could not start webcam. Running without visual input.\n";
-    }
+    // Start webcam after event loop is running (so permission dialog can display)
+    auto* webcamRaw = webcam.get();
+    QTimer::singleShot(500, [webcamRaw]() {
+        if (webcamRaw->start()) {
+            std::cerr << "Webcam started (640x480 @ 30fps)\n";
+        } else {
+            std::cerr << "WARNING: Could not start webcam. Check System Settings > Privacy > Camera.\n";
+        }
+    });
 
     // Debug REST API on port 9090
     auto debugApi = std::make_unique<DebugAPI>(simulation, webcam.get(),

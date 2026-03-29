@@ -61,6 +61,13 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 
         CVPixelBufferUnlockBaseAddress(imageBuffer, kCVPixelBufferLock_ReadOnly);
 
+        // Log first frame
+        static bool firstFrame = true;
+        if (firstFrame) {
+            NSLog(@"BioBrain: First webcam frame received (%zux%zu)", width, height);
+            firstFrame = false;
+        }
+
         // Deliver the frame to the C++ owner via its public delivery method
         self.owner->deliverFrame(std::move(frame));
     }
@@ -108,26 +115,54 @@ bool WebcamCapture::start() {
             return true;  // Already running
         }
 
+        // --- Check/request camera permission ---
+        AVAuthorizationStatus authStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+        NSLog(@"BioBrain: Camera auth status = %ld", (long)authStatus);
+
+        if (authStatus == AVAuthorizationStatusNotDetermined) {
+            // Request permission asynchronously — retry start() from completion handler
+            NSLog(@"BioBrain: Requesting camera permission (dialog should appear)...");
+            WebcamCapture* self = this;
+            [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
+                NSLog(@"BioBrain: Camera permission %s", granted ? "GRANTED" : "DENIED");
+                if (granted) {
+                    // Retry start on main queue after permission granted
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        self->start();
+                    });
+                }
+            }];
+            // Return false now — start() will be called again after permission dialog
+            return false;
+        } else if (authStatus == AVAuthorizationStatusAuthorized) {
+            NSLog(@"BioBrain: Camera permission already authorized");
+        } else if (authStatus == AVAuthorizationStatusDenied || authStatus == AVAuthorizationStatusRestricted) {
+            NSLog(@"BioBrain: Camera permission denied (status=%ld). Go to System Settings > Privacy > Camera.", (long)authStatus);
+            return false;
+        }
+
         // --- Find camera device ---
         AVCaptureDevice* device = nil;
 
 #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
-        // macOS 14+ uses AVCaptureDeviceDiscoverySession
         AVCaptureDeviceDiscoverySession* discovery =
             [AVCaptureDeviceDiscoverySession
                 discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInWideAngleCamera,
                                                   AVCaptureDeviceTypeExternal]
                                       mediaType:AVMediaTypeVideo
                                        position:AVCaptureDevicePositionUnspecified];
+        NSLog(@"BioBrain: Found %lu camera(s)", (unsigned long)discovery.devices.count);
         if (discovery.devices.count > 0) {
             device = discovery.devices.firstObject;
+            NSLog(@"BioBrain: Using camera: %@", device.localizedName);
         }
 #else
         device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
 #endif
 
         if (!device) {
-            return false;  // No camera available
+            NSLog(@"BioBrain: No camera device found");
+            return false;
         }
 
         // --- Configure capture session ---
@@ -189,7 +224,16 @@ bool WebcamCapture::start() {
 
         // --- Start ---
         [impl_->session startRunning];
+
+        // Verify session is actually running
+        if (![impl_->session isRunning]) {
+            NSLog(@"BioBrain: AVCaptureSession failed to start!");
+            return false;
+        }
+
         running_.store(true, std::memory_order_release);
+        NSLog(@"BioBrain: Webcam capture started successfully (%dx%d @ %d fps)",
+              target_width_, target_height_, target_fps_);
         return true;
     }
 }
